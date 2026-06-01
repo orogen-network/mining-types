@@ -29,7 +29,7 @@ from mining_types.heartbeat import (
     WatchdogState,
 )
 from mining_types.nonce import NonceChallenge, NonceClaim
-from mining_types.receipt import KvMetadata, Receipt
+from mining_types.receipt import KvMetadata, Receipt, TokenEvidence
 from mining_types.slashing import FaultCode, SlashingEvidence
 
 __all__ = [
@@ -51,6 +51,7 @@ __all__ = [
     "Receipt",
     "SettlementBatch",
     "SlashingEvidence",
+    "TokenEvidence",
     "WatchdogState",
     "blake2_256",
     "canonical_json",

@@ -15,6 +15,32 @@ class KvMetadata(BaseModel):
     kv_blocks_used: int = 0
 
 
+class TokenEvidence(BaseModel):
+    """Optional tolerant-replay evidence (RFC-0001 §TokenEvidence, additive).
+
+    Real (GPU/CPU) inference is not bit-reproducible, so an exact
+    `sha256(response_text)` comparison would slash an honest operator the moment
+    floating-point or kernel non-determinism nudges a single token. This block
+    carries the extra signal a validator needs to run a *tolerant* comparison
+    instead — token-id overlap and top-logprob agreement — without leaking the
+    response text itself.
+
+    Every field is optional so the receipt remains wire-compatible: a mock or
+    exact-replay deployment simply omits the block and existing serialization /
+    signing is unchanged.
+    """
+
+    # Hex digest (sha256) over the emitted token-id sequence. Lets a validator
+    # cheaply detect "same tokens" without transporting the full id list.
+    token_ids_digest: str | None = None
+    # The emitted token ids, when the operator chooses to publish them for a
+    # full token-overlap comparison. May be omitted to save bandwidth.
+    token_ids: list[int] | None = None
+    # Per-position top log-probability the engine assigned to its chosen token.
+    # Used for top-logprob agreement scoring under tolerant replay.
+    top_logprobs: list[float] | None = None
+
+
 class Receipt(BaseModel):
     """Signed response receipt per RFC-0001.
 
@@ -32,6 +58,8 @@ class Receipt(BaseModel):
     request_hash: str
     response_hash: str
     log_probs_sample: list[float] = Field(default_factory=list)
+    # Optional tolerant-replay evidence (additive; None when not published).
+    token_evidence: TokenEvidence | None = None
     kv_metadata: KvMetadata = Field(default_factory=KvMetadata)
     kernel_pack_hash: str
     gpu_model: str = "mock-H100"

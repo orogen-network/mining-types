@@ -15,6 +15,7 @@ from mining_types import (
     Quantization,
     Receipt,
     SettlementBatch,
+    TokenEvidence,
     blake2_256,
     canonical_json,
     generate_keypair,
@@ -187,3 +188,50 @@ def test_heartbeat_signature_verifies_against_operator_pubkey() -> None:
     )
     signed = hb.sign(priv)
     assert verify_ed25519(pub, signed.signing_payload(), signed.signature) is True
+
+
+def _bare_receipt(**overrides: object) -> Receipt:
+    base: dict[str, object] = {
+        "job_id": "0x" + "11" * 32,
+        "operator_id": "op",
+        "model_id": "m",
+        "model_weight_hash": "0x" + "33" * 32,
+        "customer_nonce": "0x" + "44" * 32,
+        "request_hash": "0x" + "55" * 32,
+        "response_hash": "0x" + "66" * 32,
+        "kernel_pack_hash": "0x" + "77" * 32,
+        "attestation_report_hash": "0x" + "88" * 32,
+        "timestamp_ms": 1,
+        "gateway_id": "gw",
+    }
+    base.update(overrides)
+    return Receipt(**base)  # type: ignore[arg-type]
+
+
+def test_token_evidence_defaults_to_none_and_omitted_from_legacy_shape() -> None:
+    """The tolerant-replay block is additive: absent by default, so existing
+    receipts (and their signatures) are byte-for-byte unchanged."""
+    r = _bare_receipt()
+    assert r.token_evidence is None
+    # Default serialization carries the field (as null) but never any tokens.
+    dumped = r.model_dump(mode="json")
+    assert dumped["token_evidence"] is None
+    # A legacy receipt JSON without the field at all still validates.
+    legacy = {k: v for k, v in dumped.items() if k != "token_evidence"}
+    assert Receipt.model_validate(legacy).token_evidence is None
+
+
+def test_token_evidence_roundtrips_and_signs() -> None:
+    priv, pub = generate_keypair()
+    ev = TokenEvidence(
+        token_ids_digest="ab" * 32,
+        token_ids=[1, 2, 3, 4],
+        top_logprobs=[-0.1, -0.2, -0.3, -0.4],
+    )
+    r = _bare_receipt(operator_id=pub, token_evidence=ev)
+    signed = r.sign(priv)
+    assert verify_ed25519(pub, signed.signing_payload(), signed.operator_signature) is True
+    restored = Receipt.model_validate(signed.model_dump(mode="json"))
+    assert restored.token_evidence is not None
+    assert restored.token_evidence.token_ids == [1, 2, 3, 4]
+    assert restored.token_evidence.token_ids_digest == "ab" * 32
